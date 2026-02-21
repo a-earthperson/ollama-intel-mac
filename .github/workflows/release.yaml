@@ -34,25 +34,11 @@ jobs:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
       VERSION: ${{ needs.setup-environment.outputs.VERSION }}
       ARCHS: amd64
-      APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-      APPLE_ID: ${{ vars.APPLE_ID }}
-      MACOS_SIGNING_KEY: ${{ secrets.MACOS_SIGNING_KEY }}
-      MACOS_SIGNING_KEY_PASSWORD: ${{ secrets.MACOS_SIGNING_KEY_PASSWORD }}
       CGO_CFLAGS: '-mmacosx-version-min=14.0 -O3'
       CGO_CXXFLAGS: '-mmacosx-version-min=14.0 -O3'
       CGO_LDFLAGS: '-mmacosx-version-min=14.0 -O3'
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          echo $MACOS_SIGNING_KEY | base64 --decode > certificate.p12
-          security create-keychain -p password build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p password build.keychain
-          security import certificate.p12 -k build.keychain -P $MACOS_SIGNING_KEY_PASSWORD -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k password build.keychain
-          security set-keychain-settings -lut 3600 build.keychain
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -60,7 +46,7 @@ jobs:
             go.sum
             Makefile.sync
       - run: |
-          ./scripts/build_darwin_vulkan.sh
+          APPLE_IDENTITY="" APPLE_PASSWORD="" APPLE_TEAM_ID="" APPLE_ID="" ./scripts/build_darwin_vulkan.sh
       - name: Rename Darwin Vulkan x86_64 artifacts
         run: |
           if [ -f dist/ollama-darwin.tgz ]; then
