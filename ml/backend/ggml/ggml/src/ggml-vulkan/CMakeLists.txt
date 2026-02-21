@@ -33,14 +33,11 @@ endfunction()
 function(test_shader_extension_support EXTENSION_NAME TEST_SHADER_FILE RESULT_VARIABLE)
     execute_process(
         COMMAND ${Vulkan_GLSLC_EXECUTABLE} -o - -fshader-stage=compute --target-env=vulkan1.3 "${TEST_SHADER_FILE}"
-        OUTPUT_VARIABLE glslc_output
+        RESULT_VARIABLE glslc_status
         ERROR_VARIABLE glslc_error
     )
 
-    if (${glslc_error} MATCHES ".*extension not supported: ${EXTENSION_NAME}.*")
-        message(STATUS "${EXTENSION_NAME} not supported by glslc")
-        set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
-    else()
+    if (glslc_status EQUAL 0)
         message(STATUS "${EXTENSION_NAME} supported by glslc")
         set(${RESULT_VARIABLE} ON PARENT_SCOPE)
         add_compile_definitions(${RESULT_VARIABLE})
@@ -48,6 +45,9 @@ function(test_shader_extension_support EXTENSION_NAME TEST_SHADER_FILE RESULT_VA
         # Ensure the extension support is forwarded to vulkan-shaders-gen
         list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS -D${RESULT_VARIABLE}=ON)
         set(VULKAN_SHADER_GEN_CMAKE_ARGS "${VULKAN_SHADER_GEN_CMAKE_ARGS}" PARENT_SCOPE)
+    else()
+        message(STATUS "${EXTENSION_NAME} not supported by glslc")
+        set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
     endif()
 endfunction()
 

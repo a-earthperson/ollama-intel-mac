@@ -30,7 +30,7 @@ usage() {
 
 mkdir -p dist
 
-ARCHS="arm64 amd64"
+ARCHS="amd64"
 while getopts "a:h" OPTION; do
     case $OPTION in
         a) ARCHS=$OPTARG ;;
@@ -218,6 +218,20 @@ _build_macapp() {
         rm -rf dist/OllamaDisk
     else
         echo "WARNING: Code signing disabled, this bundle will not work for upgrade testing"
+    fi
+
+    # Install the built app bundle into /Applications (standard macOS location).
+    status "Installing Ollama.app to /Applications"
+    rm -rf "/Applications/Ollama.app" 2>/dev/null || true
+    if cp -a "dist/Ollama.app" "/Applications/Ollama.app" 2>/dev/null; then
+        status "Installed /Applications/Ollama.app"
+    else
+        status "Direct copy failed; retrying with sudo"
+        if command -v sudo >/dev/null 2>&1 && sudo rm -rf "/Applications/Ollama.app" && sudo cp -a "dist/Ollama.app" "/Applications/Ollama.app"; then
+            status "Installed /Applications/Ollama.app with sudo"
+        else
+            status "WARNING: Failed to install into /Applications. Run: sudo cp -a dist/Ollama.app /Applications/Ollama.app"
+        fi
     fi
 }
 

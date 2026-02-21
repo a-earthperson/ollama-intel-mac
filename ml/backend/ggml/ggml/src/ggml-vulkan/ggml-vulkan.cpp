@@ -5049,7 +5049,7 @@ static void ggml_vk_print_gpu_info(size_t idx) {
     // Pointer to the last chain element
     last_struct = (VkBaseOutStructure *)&vk12_features;
 
-#if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT)
+#if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT) && defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR)
     VkPhysicalDeviceCooperativeMatrixFeaturesKHR coopmat_features;
     coopmat_features.pNext = nullptr;
     coopmat_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR;
@@ -5096,7 +5096,7 @@ static void ggml_vk_print_gpu_info(size_t idx) {
                        && shader_integer_dot_product_features.shaderIntegerDotProduct;
 
     coopmat_support = coopmat_support
-#if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT)
+#if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT) && defined(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR)
                    && coopmat_features.cooperativeMatrix
 #endif
                    && ggml_vk_khr_cooperative_matrix_support(props2.properties, driver_props, device_architecture);
@@ -5142,7 +5142,11 @@ static void ggml_vk_instance_init() {
     vk::ApplicationInfo app_info{ "ggml-vulkan", 1, nullptr, 0, api_version };
 
     const std::vector<vk::ExtensionProperties> instance_extensions = vk::enumerateInstanceExtensionProperties();
+#if defined(VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT) && defined(VK_LAYER_SETTING_TYPE_BOOL32_EXT)
     const bool layer_settings = ggml_vk_instance_layer_settings_available();
+#else
+    const bool layer_settings = false;
+#endif
 #ifdef __APPLE__
     const bool portability_enumeration_ext = ggml_vk_instance_portability_enumeration_ext_available(instance_extensions);
 #endif
@@ -5165,17 +5169,28 @@ static void ggml_vk_instance_init() {
         extensions.push_back("VK_EXT_debug_utils");
     }
     VkBool32 enable_best_practice = layer_settings;
-    std::vector<vk::LayerSettingEXT> settings = {
+    vk::InstanceCreateInfo instance_create_info(vk::InstanceCreateFlags{}, &app_info, layers, extensions);
+#if defined(VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT) && defined(VK_LAYER_SETTING_TYPE_BOOL32_EXT)
+    VkLayerSettingEXT settings[] = {
         {
             "VK_LAYER_KHRONOS_validation",
             "validate_best_practices",
-            vk::LayerSettingTypeEXT::eBool32,
+            VK_LAYER_SETTING_TYPE_BOOL32_EXT,
             1,
             &enable_best_practice
         },
     };
-    vk::LayerSettingsCreateInfoEXT layer_setting_info(settings);
-    vk::InstanceCreateInfo instance_create_info(vk::InstanceCreateFlags{}, &app_info, layers, extensions, &layer_setting_info);
+    VkLayerSettingsCreateInfoEXT layer_setting_info = {};
+    layer_setting_info.sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
+    layer_setting_info.pNext = nullptr;
+    layer_setting_info.settingCount = 1;
+    layer_setting_info.pSettings = settings;
+    if (layer_settings) {
+        instance_create_info.pNext = &layer_setting_info;
+    }
+#else
+    (void)enable_best_practice;
+#endif
 #ifdef __APPLE__
     if (portability_enumeration_ext) {
         instance_create_info.flags |= vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
