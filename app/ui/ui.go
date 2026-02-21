@@ -284,12 +284,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/model/upstream", handle(s.modelUpstream))
 	mux.Handle("GET /api/v1/settings", handle(s.getSettings))
 	mux.Handle("POST /api/v1/settings", handle(s.settings))
+	mux.Handle("GET /api/v1/cloud", handle(s.getCloudSetting))
+	mux.Handle("POST /api/v1/cloud", handle(s.cloudSetting))
 
 	// Ollama proxy endpoints
 	ollamaProxy := s.ollamaProxy()
 	mux.Handle("GET /api/tags", ollamaProxy)
 	mux.Handle("POST /api/show", ollamaProxy)
 	mux.Handle("GET /api/version", ollamaProxy)
+	mux.Handle("GET /api/status", ollamaProxy)
 	mux.Handle("HEAD /api/version", ollamaProxy)
 	mux.Handle("POST /api/me", ollamaProxy)
 	mux.Handle("POST /api/signout", ollamaProxy)
@@ -1417,11 +1420,6 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
 		settings.Models = envconfig.Models()
 	}
 
-	// set default context length if not set
-	if settings.ContextLength == 0 {
-		settings.ContextLength = 4096
-	}
-
 	// Include current runtime settings
 	settings.Agent = s.Agent
 	settings.Tools = s.Tools
@@ -1460,17 +1458,51 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
+func (s *Server) cloudSetting(w http.ResponseWriter, r *http.Request) error {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return fmt.Errorf("invalid request body: %w", err)
+	}
+
+	if err := s.Store.SetCloudEnabled(req.Enabled); err != nil {
+		return fmt.Errorf("failed to persist cloud setting: %w", err)
+	}
+
+	s.Restart()
+
+	return s.writeCloudStatus(w)
+}
+
+func (s *Server) getCloudSetting(w http.ResponseWriter, r *http.Request) error {
+	return s.writeCloudStatus(w)
+}
+
+func (s *Server) writeCloudStatus(w http.ResponseWriter) error {
+	disabled, source, err := s.Store.CloudStatus()
+	if err != nil {
+		return fmt.Errorf("failed to load cloud status: %w", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(map[string]any{
+		"disabled": disabled,
+		"source":   source,
+	})
+}
+
 func (s *Server) getInferenceCompute(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 	defer cancel()
-	serverInferenceComputes, err := server.GetInferenceComputer(ctx)
+	info, err := server.GetInferenceInfo(ctx)
 	if err != nil {
-		s.log().Error("failed to get inference compute", "error", err)
-		return fmt.Errorf("failed to get inference compute: %w", err)
+		s.log().Error("failed to get inference info", "error", err)
+		return fmt.Errorf("failed to get inference info: %w", err)
 	}
 
-	inferenceComputes := make([]responses.InferenceCompute, len(serverInferenceComputes))
-	for i, ic := range serverInferenceComputes {
+	inferenceComputes := make([]responses.InferenceCompute, len(info.Computes))
+	for i, ic := range info.Computes {
 		inferenceComputes[i] = responses.InferenceCompute{
 			Library: ic.Library,
 			Variant: ic.Variant,
@@ -1482,7 +1514,8 @@ func (s *Server) getInferenceCompute(w http.ResponseWriter, r *http.Request) err
 	}
 
 	response := responses.InferenceComputeResponse{
-		InferenceComputes: inferenceComputes,
+		InferenceComputes:    inferenceComputes,
+		DefaultContextLength: info.DefaultContextLength,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
