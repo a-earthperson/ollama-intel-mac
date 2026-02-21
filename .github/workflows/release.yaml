@@ -11,7 +11,7 @@ env:
 
 jobs:
   setup-environment:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS]
     environment: release
     outputs:
       GOFLAGS: ${{ steps.goflags.outputs.GOFLAGS }}
@@ -27,7 +27,7 @@ jobs:
           echo vendorsha=$(make -f Makefile.sync print-base) | tee -a $GITHUB_OUTPUT
 
   darwin-build:
-    runs-on: macos-14-xlarge
+    runs-on: [self-hosted, macOS]
     environment: release
     needs: setup-environment
     env:
@@ -516,7 +516,7 @@ jobs:
 
   # Final release process
   release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS]
     environment: release
     needs: [darwin-build]
     permissions:
@@ -537,7 +537,12 @@ jobs:
         run: |
           cp scripts/install.sh dist/install.sh
       - name: Generate checksum file
-        run: find . -type f -not -name 'sha256sum.txt' | xargs sha256sum | tee sha256sum.txt
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            find . -type f -not -name 'sha256sum.txt' -print0 | xargs -0 sha256sum | tee sha256sum.txt
+          else
+            find . -type f -not -name 'sha256sum.txt' -print0 | xargs -0 shasum -a 256 | tee sha256sum.txt
+          fi
         working-directory: dist
       - name: Create or update Release for tag
         run: |
