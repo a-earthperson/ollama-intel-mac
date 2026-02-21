@@ -116,11 +116,23 @@ _build_macapp() {
     touch dist/Ollama.app
 
     go clean -cache
-    GOARCH=amd64 CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-amd64 -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
-    GOARCH=arm64 CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-arm64 -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
+    APP_ARCH_BINS=""
+    for ARCH in $ARCHS; do
+        GOARCH=$ARCH CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-$ARCH -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
+        APP_ARCH_BINS="$APP_ARCH_BINS dist/darwin-app-$ARCH"
+    done
     mkdir -p dist/Ollama.app/Contents/MacOS
-    lipo -create -output dist/Ollama.app/Contents/MacOS/Ollama dist/darwin-app-amd64 dist/darwin-app-arm64
-    rm -f dist/darwin-app-amd64 dist/darwin-app-arm64
+    if [ -f dist/darwin-app-amd64 ] && [ -f dist/darwin-app-arm64 ]; then
+        lipo -create -output dist/Ollama.app/Contents/MacOS/Ollama dist/darwin-app-amd64 dist/darwin-app-arm64
+    elif [ -f dist/darwin-app-amd64 ]; then
+        cp -a dist/darwin-app-amd64 dist/Ollama.app/Contents/MacOS/Ollama
+    elif [ -f dist/darwin-app-arm64 ]; then
+        cp -a dist/darwin-app-arm64 dist/Ollama.app/Contents/MacOS/Ollama
+    else
+        echo "ERROR: no app binary was built"
+        exit 1
+    fi
+    rm -f $APP_ARCH_BINS
 
     # Create a mock Squirrel.framework bundle
     mkdir -p dist/Ollama.app/Contents/Frameworks/Squirrel.framework/Versions/A/Resources/
@@ -138,9 +150,15 @@ _build_macapp() {
     # Setup the ollama binaries
     mkdir -p dist/Ollama.app/Contents/Resources
     local resources_path="dist/Ollama.app/Contents/Resources"
-    if [ -d dist/darwin-amd64 ]; then
+    if [ -d dist/darwin-amd64 ] && [ -d dist/darwin-arm64 ]; then
         lipo -create -output dist/Ollama.app/Contents/Resources/ollama dist/darwin-amd64/ollama dist/darwin-arm64/ollama
         cp -a dist/darwin-amd64/lib/ollama/. "$resources_path/"
+    elif [ -d dist/darwin-amd64 ]; then
+        cp -a dist/darwin-amd64/ollama dist/Ollama.app/Contents/Resources/ollama
+        cp -a dist/darwin-amd64/lib/ollama/. "$resources_path/"
+    elif [ -d dist/darwin-arm64 ]; then
+        cp -a dist/darwin-arm64/ollama dist/Ollama.app/Contents/Resources/ollama
+        cp -a dist/darwin-arm64/lib/ollama/. "$resources_path/"
     else
         cp -a dist/darwin/ollama dist/Ollama.app/Contents/Resources/ollama
         if [ -d dist/darwin/lib/ollama ]; then

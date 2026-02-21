@@ -27,12 +27,13 @@ jobs:
           echo vendorsha=$(make -f Makefile.sync print-base) | tee -a $GITHUB_OUTPUT
 
   darwin-build:
-    runs-on: macos-14-xlarge
+    runs-on: [self-hosted, macOS, X64]
     environment: release
     needs: setup-environment
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
       VERSION: ${{ needs.setup-environment.outputs.VERSION }}
+      ARCHS: amd64
       APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -59,13 +60,24 @@ jobs:
             go.sum
             Makefile.sync
       - run: |
-          ./scripts/build_darwin.sh
+          ./scripts/build_darwin_vulkan.sh
+      - name: Rename Darwin Vulkan x86_64 artifacts
+        run: |
+          if [ -f dist/ollama-darwin.tgz ]; then
+            cp dist/ollama-darwin.tgz dist/ollama-darwin-x86_64-vulkan.tgz
+          fi
+          if [ -f dist/Ollama-darwin.zip ]; then
+            cp dist/Ollama-darwin.zip dist/Ollama-darwin-x86_64-vulkan.zip
+          fi
+          if [ -f dist/Ollama.dmg ]; then
+            cp dist/Ollama.dmg dist/Ollama-darwin-x86_64-vulkan.dmg
+          fi
       - name: Log build results
         run: |
           ls -l dist/
       - uses: actions/upload-artifact@v4
         with:
-          name: bundles-darwin
+          name: bundles-darwin-x86_64-vulkan
           path: |
             dist/*.tgz
             dist/*.tar.zst
@@ -73,6 +85,7 @@ jobs:
             dist/*.dmg
 
   windows-depends:
+    if: false
     strategy:
       matrix:
         os: [windows]
@@ -211,6 +224,7 @@ jobs:
           path: dist\*
 
   windows-build:
+    if: false
     strategy:
       matrix:
         os: [windows]
@@ -285,6 +299,7 @@ jobs:
             dist\*
 
   windows-app:
+    if: false
     runs-on: windows
     environment: release
     needs: [windows-build, windows-depends]
@@ -341,6 +356,7 @@ jobs:
             dist/OllamaSetup.exe
 
   linux-build:
+    if: false
     strategy:
       matrix:
         include:
@@ -408,6 +424,7 @@ jobs:
 
   # Build each Docker variant (OS, arch, and flavor) separately. Using QEMU is unreliable and slower.
   docker-build-push:
+    if: false
     strategy:
       matrix:
         include:
@@ -464,6 +481,7 @@ jobs:
 
   # Merge Docker images for the same flavor into a single multi-arch manifest
   docker-merge-push:
+    if: false
     strategy:
       matrix:
         suffix: ['', '-rocm']
@@ -500,7 +518,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: release
-    needs: [darwin-build, windows-app, linux-build]
+    needs: [darwin-build]
     permissions:
       contents: write
     env:
