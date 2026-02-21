@@ -27,7 +27,7 @@ jobs:
           echo vendorsha=$(make -f Makefile.sync print-base) | tee -a $GITHUB_OUTPUT
 
   darwin-build:
-    runs-on: [self-hosted, macOS, X64]
+    runs-on: macos-14-xlarge
     environment: release
     needs: setup-environment
     env:
